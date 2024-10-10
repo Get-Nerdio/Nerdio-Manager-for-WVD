@@ -24,25 +24,25 @@ $LogTime = $VMTime.ToUniversalTime()
 mkdir "$env:windir\Temp\NMWLogs\ScriptedActions\msoffice_sa" -Force
 Start-Transcript -Path "$env:windir\Temp\NMWLogs\ScriptedActions\msoffice_sa\ps_log.txt" -Append -IncludeInvocationHeader
 Write-Host "################# New Script Run #################"
-Write-host "Current time (UTC-0): $LogTime"
+Write-Host "Current time (UTC-0): $LogTime"
 
 # create directory to store ODT and setup files
 mkdir "$env:windir\Temp\odt_sa\raw" -Force
 
-# parse through the MS Download Center page to get the most up-to-date download link
-$MSDlSite2 = Invoke-WebRequest "https://www.microsoft.com/en-us/download/confirmation.aspx?id=49117" -UseBasicParsing
-ForEach ($Href in $MSDlSite2.Links.Href)
-{
-    if ($Href -match "officedeploymenttool" ){
-        $DLink = $href
-    }
+# Evergreen URL for the latest version of ODT
+$SetupUrl = "https://officecdn.microsoft.com/pr/wsus/setup.exe"
+
+# Local path to the ODT executable
+$SetupFile = "$env:windir\Temp\odt_sa\raw\setup.exe"
+
+# Download the Office Deployment Tool setup.exe
+$ProgressPreference = 'SilentlyContinue'
+$params = @{
+    Uri             = $SetupUrl
+    OutFile         = $SetupFile
+    UseBasicParsing = $true
 }
-
-# Download office deployment tool using up-to-date link grabed eariler
-Invoke-WebRequest -Uri $DLink -OutFile "$env:windir\Temp\odt_sadata.exe" -UseBasicParsing
-
-# unpack the ODT executable to get the setup.exe
-Start-Process -filepath "$env:windir\Temp\odt_sadata.exe" -ArgumentList "/extract:$env:windir\Temp\odt_sa\raw /quiet" -Wait
+Invoke-WebRequest @params
 
 # create a base config XML for ODT to use, this one has auto-update disabled
 $ODTConfig = @"
@@ -65,11 +65,16 @@ $ODTConfig = @"
   <Property Name="SharedComputerLicensing" Value="1"/>
 </Configuration>
 "@ 
-$ODTConfig | Out-File "$env:windir\Temp\odt_sa\raw\odtconfig.xml"
+$ODTConfig | Out-File -FilePath "$env:windir\Temp\odt_sa\raw\odtconfig.xml"
 
 # execute odt.exe using the newly created odtconfig.xml. This updates/installs office (takes a while)
-Start-Process -filepath "$env:windir\Temp\odt_sa\raw\setup.exe" -ArgumentList "/configure $env:windir\Temp\odt_sa\raw\odtconfig.xml" -Wait
+$params = @{
+    FilePath     = $SetupFile
+    ArgumentList = "/configure $env:windir\Temp\odt_sa\raw\odtconfig.xml"
+    Wait         = $true
+}
+Start-Process @params
 
 # End Logging
 Stop-Transcript
-$VerbosePreference=$SaveVerbosePreference
+$VerbosePreference = $SaveVerbosePreference
